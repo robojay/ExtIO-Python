@@ -7,7 +7,7 @@ Python module and examples to work with ExtIO driver based Software Defined Radi
 - Receive only
 - Testing is performed with an Icom R8600
 - Future testing will include RTL-SDR, ADI Pluto, and SoftRock
-- Python3 32-bit is required (the DLLs are 32-bit)
+- Python3 32-bit is required (the DLLs are 32-bit), testing with Python 3.8.6
 
 ## Reference Links
 [HDSDR Homepage](http://www.hdsdr.de/): For information about ExtIO and links to specific [hardware](http://www.hdsdr.de/hardware.html) support.
