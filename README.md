@@ -1,5 +1,5 @@
 # ExtIO-Python
-Python module and examples to work with ExtIO driver based Software Defined Radios (SDRs)
+Python package and examples to work with ExtIO driver based Software Defined Radios (SDRs)
 
 ## IMPORTANT NOTES!!!
 - ExtIO DLLs are Windows DLLs.  The code in this repository has only been tested under Windows 10, and is not currently supported on any other operating system
