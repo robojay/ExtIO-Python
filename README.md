@@ -11,3 +11,4 @@ Python package and examples to work with ExtIO driver based Software Defined Rad
 
 ## Reference Links
 [HDSDR Homepage](http://www.hdsdr.de/): For information about ExtIO and links to specific [hardware](http://www.hdsdr.de/hardware.html) support.
+[LC_ExtIO_Types.h](http://www.hdsdr.de/download/LC_ExtIO_Types.h): C Header file for ExtIO drivers
