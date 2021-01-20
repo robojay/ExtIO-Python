@@ -61,7 +61,11 @@ extIO.SetCallback(exampleCallback)
 print('Open: ' + str(extIO.OpenHW()))
 print('Start: ' + str(extIO.StartHW(frequency)))
 
-time.sleep(5)
+time.sleep(2)
+
+extIO.SetHWLO(frequency + 1)
+
+time.sleep(2)
 
 extIO.StopHW()
 extIO.CloseHW()
