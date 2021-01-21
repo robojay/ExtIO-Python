@@ -68,31 +68,27 @@ time.sleep(2)
 
 extIO.SetHWLO(frequency + 1)
 
+""" this is one way to tell if a DLL supports a function """
 try:
 	extIO.foo()
 except AttributeError:
 	print('foo() not supported ;-)')
 
-try:
-	print(extIO.ExtIoGetSrates())
-except AttributeError:
-	print('ExtIOGetSrates() not supported')
+print(extIO.ExtIoGetSrates())
 
-try:
-	print(extIO.ExtIoGetSrates(idx = 0))
-except AttributeError:
-	print('ExtIOGetSrates() not supported')
+print(extIO.ExtIoGetSrates(idx = 0))
 
-try:
-	sRateIndex = extIO.ExtIoGetActualSrateIdx()
-	print(sRateIndex)
-except AttributeError:
-	print('ExtIOGetActualSrateIdx() not supported')
+sRateIndex = extIO.ExtIoGetActualSrateIdx()
+print(sRateIndex)
 
-try:
-	print(extIO.ExtIoSetSrate(sRateIndex))
-except AttributeError:
-	print('ExtIOSetSrate() not supported')
+print(extIO.ExtIoSetSrate(sRateIndex))
+
+settingsArray = extIO.ExtIoGetSetting()
+""" this is one way to go through the indices, there are better Pythonic ways if you know the setting you want """
+for index in range(0, len(settingsArray)):
+	print('Index [' + str(index) + '] ' + settingsArray[index]['description'] + ' = ' + settingsArray[index]['value'])
+
+print(extIO.ExtIoGetSetting(0))
 
 time.sleep(2)
 

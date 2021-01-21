@@ -154,3 +154,61 @@ class ExtIO():
 		else:
 			return False
 
+	def ShowGUI(self):
+		""" 
+		Activates the radio's GUI, if it has one
+		May require additional DLLs somewhere in the path
+		Will also require a window handler in your application code (see examples)
+		"""
+		self.extIo.ShowGUI()
+
+	def ShowGUI(self):
+		""" 
+		Hides the radio's GUI, if it has one
+		"""
+		self.extIo.HideGUI()
+
+	def ShowGUI(self):
+		""" 
+		Switch visbility of the radio's GUI, if it has one
+		"""
+		self.extIo.SwitchGUI()
+
+	def ExtIoGetSetting(self, idx = None):
+		""" Get optional setting description and value at index idx
+			or an ordered list of all the settings
+		"""
+		# max buffer size specified in header file, but no define was given
+		description = create_string_buffer(1024)
+		value = create_string_buffer(1024)
+		retDescription = None
+		retValue = None
+		settings = []
+		result = None
+		if idx != None:
+			ret = c_int(self.extIo.ExtIoGetSetting(c_int(idx), byref(description), byref(value))).value
+			if ret == 0:
+				retDescription = description.value.decode('utf-8')
+				retValue = value.value
+			result = retDescription, retValue.decode('utf-8')
+		else:
+			idx = 0
+			ret = 0
+			while ret == 0:
+				ret = c_int(self.extIo.ExtIoGetSetting(c_int(idx), byref(description), byref(value))).value
+				if ret == 0:
+					settings.append({'description': description.value.decode('utf-8'), 'value': value.value.decode('utf-8')})
+					idx += 1
+			result = settings
+		return result
+
+
+
+
+
+
+
+"""
+typedef int     (__stdcall * pfnExtIoGetSetting) ( int idx, char * description, char * value ); // will be called (at least) before exiting application
+typedef void    (__stdcall * pfnExtIoSetSetting) ( int idx, const char * value ); // before calling InitHW() !!!
+"""
