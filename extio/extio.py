@@ -108,3 +108,49 @@ class ExtIO():
 		return retVal
 
 	# Optional Functions - not all radios will support these
+
+	def foo(self):
+		""" used to verify exception catching of non-existent DLL functions """
+		self.extIo.FooBar(c_int(10))
+
+
+	def ExtIoGetSrates(self, idx = None):
+		""" returns sample rate of index value, or an ordered list of all the sample rate 
+		    which is slightly different than the original C call
+		    but probably what they would have done if it was as easy as Python
+		"""
+		retVal = None
+		if idx != None:
+			sampleRateValue = c_double()		
+			ret = c_int(self.extIo.ExtIoGetSrates(c_int(idx), byref(sampleRateValue))).value
+			if ret == 0:
+				retVal = sampleRateValue.value
+			else:
+				retVal = None
+		else:
+			sampleRateValue = c_double()		
+			self.sRates = []
+			ret = 0
+			index = 0
+			while ret == 0:
+				ret = c_int(self.extIo.ExtIoGetSrates(c_int(index), byref(sampleRateValue))).value
+				if ret == 0:
+					self.sRates.append(sampleRateValue.value)
+					index += 1
+			retVal = self.sRates
+		return retVal
+
+	def ExtIoGetActualSrateIdx(self):
+		""" Returns index of sample rate setting """
+		self.actualSrateIdx = c_int(self.extIo.ExtIoGetActualSrateIdx()).value
+		if self.actualSrateIdx == -1:
+			self.actualSrateIdx = None 
+		return self.actualSrateIdx
+
+	def ExtIoSetSrate(self, idx):
+		""" Sets sample rate index to idx , False if an error """
+		if c_int(self.extIo.ExtIoSetSrate(c_int(idx))).value != -1:
+			return True
+		else:
+			return False
+
