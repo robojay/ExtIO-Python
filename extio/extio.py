@@ -1,6 +1,6 @@
 from ctypes import *
 from .extio_constants import *
-
+from .extio_stream import *
 """
 
 
@@ -201,7 +201,6 @@ class ExtIO():
 					idx += 1
 			result = settings
 		return result
-
 
 	class ExtHWtype(Enum):
 		NotDefined 		= 0

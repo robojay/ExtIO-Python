@@ -5,4 +5,5 @@ if os.name != 'nt':
 else:
 	from .extio import *
 	from .extio_constants import *
+	from .extio_stream import *
 

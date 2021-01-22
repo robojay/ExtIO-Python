@@ -21,92 +21,6 @@ import struct
 import numpy as np
 from extio import *
 
-class IqStream():
-	""" Class to handle the IQ streaming data """
-	def __init__(self, queueEntries = 64):
-		self.callbackHits = 0
-		self.callbackInfo = 0
-		self.callbackData = 0
-		self.overruns = 0
-		self.queue = queue.Queue(queueEntries)
-		self.type = None
-		self.sampleRate = None
-
-def extIoCallback(cnt, status, IQoffs, IQdata):
-	#  (int cnt, int status, float IQoffs, void *IQdata);
-	global iqStream
-	global extIO
-
-	iqStream.callbackHits += 1
-
-	if cnt > 0:
-		# we have data
-		iqStream.callbackData += 1
-		if iqStream.type == ExtIO.ExtHWtype.USBdata16:
-			# INT16
-			tempBuf = cast(IQdata, POINTER(c_int))			
-			tempArray = np.ctypeslib.as_array(tempBuf, shape=(2 * int(cnt/sizeof(c_int)),))
-			try:
-				iqStream.queue.put_nowait(tempArray)
-			except queue.Full:
-				iqStream.overruns += 1
-
-		#do this later...elif iqStream.type == ...:
-			# INT24, etc.
-
-		else:
-			print('[Callback] No valid iqFormat set (' + str(iqFormat) + ')')
-			# should handle this better... but for now
-			exit()
-
-	elif cnt == -1:
-		# we have driver info
-		iqStream.callbackInfo += 1
-
-		# TODO: changing sample rate and/or format mid recording should cause some 
-		# kind of event to stop the recorder, save the file, and reopen a new file for
-		# new data
-		# one possibility is to insert this type of state change into the queue
-
-		if status == ExtIO.ExtHWstatus.Changed_SampleRate:
-			iqStream.sampleRate = extIO.ExtIoGetSrates(extIO.ExtIoGetActualSrateIdx())		
-
-		elif status == ExtIO.ExtHWstatus.SampleFmt_IQ_UINT8:
-			iqStream.type = ExtIO.ExtHWtype.USBdataU8
-
-		elif status == ExtIO.ExtHWstatus.SampleFmt_IQ_INT16:
-			iqStream.type = ExtIO.ExtHWtype.USBdata16 
-
-		elif status == ExtIO.ExtHWstatus.SampleFmt_IQ_INT24:
-			iqStream.type = ExtIO.ExtHWtype.USBdata24 
-
-		elif status == ExtIO.ExtHWstatus.SampleFmt_IQ_INT32:
-			iqStream.type = ExtIO.ExtHWtype.USBdata32 
-
-		elif status == ExtIO.ExtHWstatus.SampleFmt_IQ_FLT32:
-			iqStream.type = ExtIO.ExtHWtype.USBfloat32 
-
-		if iqStream.type not in hwTypesSupported:
-			# should handle this better... but for now
-			print('[Callback] Unsupported Hardware Type') 
-			exit()
-
-	debugCallbackData = False
-	debugCallbackInfo = False
-
-	# this is really slow, and if enabled (especially for data)
-	# may cause data loss
-	if (debugCallbackData) or (debugCallbackInfo and cnt < 0):	
-		print('[Callback] ', end = '')
-		print(cnt, end = '')
-		print(' ', end = '')
-		print(status, end = '')
-		print(' ', end = '')
-		print(IQoffs, end = '')
-		print(' ', end = '')
-		print(IQdata)
-
-
 class waveHeader():
 	def __init__(self):
 		self.ckID = b'RIFF'
@@ -165,13 +79,18 @@ class recorderThread (threading.Thread):
 			if gotData:
 				self.fileHandle.write(tempBuffer.tobytes())
 
+def extIoCallback(cnt, status, IQoffs, IQdata):
+	""" main function wrapper for the IQ Stream callback method """
+	global iqStream
+	iqStream.iqStreamCallback(cnt, status, IQoffs, IQdata)
+
 """
 	Globals
 """
 
-iqStream = IqStream()
-extIO = None
 hwTypesSupported = [ExtIO.ExtHWtype.USBdata16]
+iqStream = None
+extIO = None
 
 """
 	Main
@@ -202,6 +121,8 @@ print('hwtype: ' + str(extIO.hwtype))
 if extIO.hwtype not in hwTypesSupported:
 	print('[main] Unsupported Hardware Type') 
 	exit()
+
+iqStream = IqStream(extIO = extIO, typesSupported = hwTypesSupported)
 
 extIO.SetCallback(extIoCallback)
 extIO.OpenHW()
