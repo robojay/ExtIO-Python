@@ -203,6 +203,9 @@ if extIO.hwtype not in hwTypesSupported:
 	print('[main] Unsupported Hardware Type') 
 	exit()
 
+extIO.SetCallback(extIoCallback)
+extIO.OpenHW()
+
 # Set the stream format and sample rate
 # note: some radios allow these to change while streaming
 # the handler would be notified
@@ -218,8 +221,6 @@ wavFile.write(fileHeader.to_bytes())
 recorder = recorderThread(iqStream, wavFile)
 recorder.start()
 
-extIO.SetCallback(extIoCallback)
-extIO.OpenHW()
 extIO.StartHW(frequency)
 
 # open file
