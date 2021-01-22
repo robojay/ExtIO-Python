@@ -63,7 +63,7 @@ fft_size = 1024
 
 extIO.StartHW(frequency)
 
-num_samps = 2000 * extIO.iqPairs
+num_samps = round(1E6 / extIO.iqPairs) * extIO.iqPairs
 sampleBuffer = np.empty(2 * num_samps, np.int16)
 sampleIndex = 0
 
