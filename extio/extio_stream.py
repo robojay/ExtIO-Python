@@ -9,16 +9,25 @@ class IqStream():
 	Class to handle the IQ streaming data
 
 	"""
-	def __init__(self, typesSupported, extIO, queueEntries = 64):
+	def __init__(self, typesSupported, extIO, queueEntries = 64, entrySize = 4096):
 		self.callbackHits = 0
 		self.callbackInfo = 0
 		self.callbackData = 0
 		self.overruns = 0
-		self.queue = queue.Queue(queueEntries)
+		self.queueFailures = 0
 		self.type = extIO.hwtype
 		self.sampleRate = None
 		self.typesSupported = typesSupported
 		self.extIO = extIO
+		self.enabled = False
+		self.queueEntries = queueEntries
+		self.entrySize = entrySize
+
+		# not format agnostic for now...
+		self.queue = queue.Queue(queueEntries)
+		self.buffer = np.zeros((queueEntries, 2 * entrySize), np.int16)
+		self.head = 0
+		self.tail = 0
 
 		self.debugCallbackData = False
 		self.debugCallbackInfo = False
@@ -31,23 +40,27 @@ class IqStream():
 
 		if cnt > 0:
 			# we have data
-			self.callbackData += 1
-			if self.type == self.extIO.ExtHWtype.USBdata16:
-				# INT16
-				tempBuf = cast(IQdata, POINTER(c_int))			
-				tempArray = np.ctypeslib.as_array(tempBuf, shape=(2 * int(cnt/sizeof(c_int)),))
-				try:
-					self.queue.put_nowait(tempArray)
-				except queue.Full:
-					self.overruns += 1
+			if self.enabled:
+				self.callbackData += 1
+				if self.type == self.extIO.ExtHWtype.USBdata16:
+					# INT16
+					tempBuf = cast(IQdata, POINTER(c_int))			
+					self.buffer[self.head][:2 * int(cnt/sizeof(c_int))] = np.copy(np.ctypeslib.as_array(tempBuf, shape=(2 * int(cnt/sizeof(c_int)),)))
+					newHead = self.head + 1
+					if (newHead >= self.queueEntries):
+						newHead = 0
+					if newHead == self.tail:
+						self.overruns += 1
+					else:
+						self.head = newHead					
 
-			#do this later...elif iqStream.type == ...:
-				# INT24, etc.
+				#do this later...elif iqStream.type == ...:
+					# INT24, etc.
 
-			else:
-				print('[iqStreamCallback] No valid type set (' + str(self.type) + ')')
-				# should handle this better... but for now
-				exit()
+				else:
+					print('[iqStreamCallback] No valid type set (' + str(self.type) + ')')
+					# should handle this better... but for now
+					exit()
 
 		elif cnt == -1:
 			# we have driver info
@@ -94,3 +107,19 @@ class IqStream():
 			print(IQoffs, end = '')
 			print(' ', end = '')
 			print(IQdata)
+
+
+""" Saved for later
+
+			if self.enabled:
+				self.callbackData += 1
+				if self.type == self.extIO.ExtHWtype.USBdata16:
+					# INT16
+					tempBuf = cast(IQdata, POINTER(c_int))			
+					tempArray = np.ctypeslib.as_array(tempBuf, shape=(2 * int(cnt/sizeof(c_int)),))
+					try:
+						self.queue.put_nowait(tempArray)
+					except queue.Full:
+						self.overruns += 1
+
+"""

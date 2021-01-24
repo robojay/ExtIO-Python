@@ -131,6 +131,7 @@ extIO.OpenHW()
 # note: some radios allow these to change while streaming
 # the handler would be notified
 iqStream.type = extIO.hwtype
+#extIO.ExtIoSetSrate(8) # testing
 iqStream.sampleRate = extIO.ExtIoGetSrates(extIO.ExtIoGetActualSrateIdx())
 
 # create a default header
@@ -143,12 +144,15 @@ recorder = recorderThread(iqStream, wavFile)
 recorder.start()
 
 extIO.StartHW(frequency)
-
 # open file
+
+iqStream.enabled = True
 
 print('Recording...')
 time.sleep(duration)
 print('done.')
+
+iqStream.enabled = False
 
 extIO.StopHW()
 
@@ -196,3 +200,5 @@ fileHeader.fmtBytesPerSecond = int(iqStream.sampleRate) * fileHeader.fmtBitsPerS
 wavFile = open(fileName, 'rb+')
 wavFile.write(fileHeader.to_bytes())
 wavFile.close()
+
+print('Overruns = ' + str(iqStream.overruns))
