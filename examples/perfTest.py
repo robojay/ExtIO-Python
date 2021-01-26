@@ -17,26 +17,27 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from extio import *
-
+import iqStream
 
 class consumerThread (threading.Thread):
 	""" Record IQ data from the queue into a file """
 	""" TODO: Mechanism to handle sample rate/format changes mid stream """
+	global iqStream
 
-	def __init__(self, iqStream):
+	def __init__(self):
 		threading.Thread.__init__(self)
 		self.stop = False
-		self.iqStream = iqStream
 
 	def run(self):
 
 		while not(self.stop):
-			if iqStream.tail != iqStream.head:
+			while (iqStream.tail != iqStream.head):
 				tempBuffer = np.copy(iqStream.buffer[iqStream.tail])
 				newTail = iqStream.tail + 1
 				if (newTail >= iqStream.queueEntries):
 					newTail = 0
 				iqStream.tail = newTail
+			time.sleep(0.05)
 
 
 def extIoCallback(cnt, status, IQoffs, IQdata):
@@ -46,14 +47,17 @@ def extIoCallback(cnt, status, IQoffs, IQdata):
 	global stampCount
 	global stampMark
 	global callbackTime
+	global deltaTimeMisses
+
 	t1 = time.perf_counter()
 	iqStream.iqStreamCallback(cnt, status, IQoffs, IQdata)
 	if iqStream.enabled:
 		if (cnt > 0):
-			timeStamp.append(time.perf_counter())
-	t2 = time.perf_counter()
-	callbackTime.append(t2 - t1)
-
+			t2 = time.perf_counter()
+			timeStamp.append(t2)
+			dT = t2 - t1
+			callbackTime.append(dT)
+			# miss counts are recorded in iqStream
 
 def perfCallback(cnt, status, IQoffs, IQdata):
 	""" main function wrapper for the IQ Stream callback method """
@@ -62,24 +66,29 @@ def perfCallback(cnt, status, IQoffs, IQdata):
 	global stampCount
 	global stampMark
 	global callbackTime
+	global deltaTimeMisses
 
 	t1 = time.perf_counter()
 	if iqStream.enabled:
 		if (cnt > 0):
-			timeStamp.append(time.perf_counter())
-	t2 = time.perf_counter()
-	callbackTime.append(t2 - t1)
+			t2 = time.perf_counter()
+			timeStamp.append(t2)
+			dT = t2 - t1
+			callbackTime.append(dT)
+			if dT > deltaTimeExpected:
+				deltaTimeMisses += 1
 
 """
 	Globals
 """
 
-iqStream = None
 extIO = None
 timeStamp = []
 hwTypesSupported = [ExtIO.ExtHWtype.USBdata16]
 useConsumer = False
 callbackTime = []
+deltaTimeMisses = 0
+
 
 """
 	Main
@@ -112,7 +121,7 @@ if extIO.hwtype not in hwTypesSupported:
 	print('[main] Unsupported Hardware Type') 
 	exit()
 
-iqStream = IqStream(extIO = extIO, typesSupported = hwTypesSupported)
+iqStream.init(_extIO = extIO, _typesSupported = hwTypesSupported, _queueEntries = 2048)
 
 if useConsumer:
 	extIO.SetCallback(extIoCallback)
@@ -132,15 +141,16 @@ print('Sample Rate: ' + str(iqStream.sampleRate))
 
 if useConsumer:
 	print('Using consumer callback')
-	consumer = consumerThread(iqStream)
+	consumer = consumerThread()
 	consumer.start()
 else:
 	print('Using performance callback')
 
 extIO.StartHW(frequency)
 
-print(extIO.iqPairs)
+iqStream.initBuffers()
 
+deltaTimeExpected = (extIO.iqPairs)/ iqStream.sampleRate  
 deltaTimeExpectedUs = (extIO.iqPairs * 1e6)/ iqStream.sampleRate  
 print('Delta Time Expected (us) = ' + str(deltaTimeExpectedUs))
 
@@ -160,7 +170,13 @@ if useConsumer:
 	print('Callback Hits = ' + str(iqStream.callbackHits))
 	print('Callback Info = ' + str(iqStream.callbackInfo))
 	print('Callback Data = ' + str(iqStream.callbackData))
+	print('IQ Pairs per Callback = ' + str(extIO.iqPairs))
+	print('Total IQ Pairs = ' + str(extIO.iqPairs * iqStream.callbackData))
+	print('Samples for second = ' + str((extIO.iqPairs * iqStream.callbackData) / duration))
 	print('Overruns = ' + str(iqStream.overruns))
+	print('Delta Time Misses = ' + str(iqStream.callbackMisses))
+else:
+	print('Delta Time Misses = ' + str(deltaTimeMisses))
 
 extIO.CloseHW()
 
@@ -194,5 +210,5 @@ ax[2].set_title('Figure ' + str(fig) + ': Callback Execution Times (us)')
 fig += 1
 ax[2].plot(cT,'.-')
 ax[2].plot(np.full((len(cT),),deltaTimeExpectedUs), 'k-', lw=1,dashes=[2, 2])
-
+ax[2].set_ylim(top = 2 * deltaTimeExpectedUs, bottom = 0)
 plt.show()

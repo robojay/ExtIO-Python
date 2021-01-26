@@ -2,39 +2,42 @@
 
 """
 Adapted from pysdr.org and David Cherkus
+
+This is pretty messy right now, with a bunch of code in the 
+display section that was used for debugging performance
+problems.
+
+If you start getting log10(zero) errors, most likely you're 
+losing data and there are discontinuities in the IQ stream.
 """
 
 import sys
 import matplotlib.pyplot as plt
 import threading
-import queue
+import time
+
 
 import numpy as np
 from extio import *
-
-def extIoCallback(cnt, status, IQoffs, IQdata):
-	""" main function wrapper for the IQ Stream callback method """
-	global iqStream
-	iqStream.iqStreamCallback(cnt, status, IQoffs, IQdata)
-
+import iqStream
 
 """
 	Globals
 """
 
 hwTypesSupported = [ExtIO.ExtHWtype.USBdata16]
-iqStream = None
 extIO = None
 
 """
 	Main
 """
 
-if (len(sys.argv) == 3):
+if (len(sys.argv) == 4):
 	extIO = ExtIO(sys.argv[1])
-	frequency = int(sys.argv[2])
+	sampleRateIndex = int(sys.argv[2])
+	frequency = int(sys.argv[3])
 else:
-	print('usage: python waterfall.py <ExtIO DLL> <Frequency in Hertz>')
+	print('usage: python waterfall.py <ExtIO DLL> <Sample Rate Index> <Frequency in Hertz>')
 	exit()
 
 # TODO: Support non-default sample rates
@@ -46,9 +49,9 @@ if extIO.hwtype not in hwTypesSupported:
 	print('[main] Unsupported Hardware Type') 
 	exit()
 
-iqStream = IqStream(extIO = extIO, typesSupported = hwTypesSupported, queueEntries = 256)
+iqStream.init(_extIO = extIO, _typesSupported = hwTypesSupported, _queueEntries = 2048)
 
-extIO.SetCallback(extIoCallback)
+extIO.SetCallback(iqStream.iqStreamCallback)
 extIO.OpenHW()
 
 # Set the stream format and sample rate
@@ -56,39 +59,52 @@ extIO.OpenHW()
 # the handler would be notified
 #extIO.ExtIoSetSrate(6)
 iqStream.type = extIO.hwtype
+extIO.ExtIoSetSrate(sampleRateIndex)
 iqStream.sampleRate = extIO.ExtIoGetSrates(extIO.ExtIoGetActualSrateIdx())
 
 sample_rate = int(iqStream.sampleRate)
 center_freq = int(frequency)
-fft_size = 512 # 1024
+fft_size = 1024
 
 extIO.StartHW(frequency)
 
+iqStream.initBuffers()
+
 num_samps = round(1e6 / extIO.iqPairs) * extIO.iqPairs
-sampleBuffer = np.empty(2 * num_samps, np.int16)
+bytesPerBuffer = extIO.iqPairs * 4
+sampleBuffer = np.empty(num_samps * 4, np.uint8)
 sampleIndex = 0
 
 iqStream.enabled = True
 
-while sampleIndex < len(sampleBuffer):
-	gotData = False
-	try:
-		tempBuffer = iqStream.queue.get(block = True, timeout = 1)
-		gotData = True
-	except queue.Empty:
-		pass
-
-	if gotData:
-		sampleBuffer[sampleIndex:sampleIndex + len(tempBuffer)] = tempBuffer
-		sampleIndex += len(tempBuffer)
+done = False
+while not done:
+	while not done and (iqStream.tail != iqStream.head):
+		tempBuffer = np.copy(iqStream.buffer[iqStream.tail])
+		tempView = tempBuffer.view(np.uint8)
+		newTail = iqStream.tail + 1
+		if (newTail >= iqStream.queueEntries):
+			newTail = 0
+		iqStream.tail = newTail
+		sampleBuffer[sampleIndex:sampleIndex + bytesPerBuffer] = tempView
+		sampleIndex += bytesPerBuffer
+		if (sampleIndex >= len(sampleBuffer)):
+			done = True
+	time.sleep(0.05)
 
 iqStream.enabled = False
 
 extIO.StopHW()
 extIO.CloseHW()
 
-print('Callback Data Hits = ' + str(iqStream.callbackData))
+print('Callback Hits = ' + str(iqStream.callbackHits))
+print('Callback Info = ' + str(iqStream.callbackInfo))
+print('Callback Data = ' + str(iqStream.callbackData))
+print('IQ Pairs per Callback = ' + str(extIO.iqPairs))
+print('Total IQ Pairs = ' + str(extIO.iqPairs * iqStream.callbackData))
+#print('Samples for second = ' + str((extIO.iqPairs * iqStream.callbackData) / duration))
 print('Overruns = ' + str(iqStream.overruns))
+print('Delta Time Misses = ' + str(iqStream.callbackMisses))
 
 # view it as signed 16 bit integers
 iqSigned = sampleBuffer.view(np.int16)
@@ -117,7 +133,7 @@ np.seterr(all='raise')
 
 fig = 1
 
-for i in range(num_slices):
+for i in range(0,num_slices):
 
 	data = iqComplex[i*fft_size:(i+1)*fft_size]
 
@@ -126,13 +142,13 @@ for i in range(num_slices):
 		offset = 0.0
 		threshold = -10
 	else:
-		offset = 1e-20
+		offset = 0 #1e-20
 		threshold = -20
 
 	S = np.fft.fftshift(np.fft.fft(data))
 	waterfall[i,:] = np.log10(np.fft.fftshift(np.abs(np.fft.fft(data))**2) + offset)
 
-	if True:
+	if False:
 		""" debug code """
 		# if (i == 0) or (len(np.where(waterfall <= threshold)[0]) != 0):
 		if (len(np.where(waterfall[i] <= threshold)[0]) != 0):

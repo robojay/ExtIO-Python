@@ -20,6 +20,7 @@ import struct
 
 import numpy as np
 from extio import *
+import iqStream
 
 class waveHeader():
 	def __init__(self):
@@ -59,54 +60,48 @@ class waveHeader():
 class recorderThread (threading.Thread):
 	""" Record IQ data from the queue into a file """
 	""" TODO: Mechanism to handle sample rate/format changes mid stream """
+	global iqStream
 
-	def __init__(self, iqStream, fileHandle):
+	def __init__(self, fileHandle):
 		threading.Thread.__init__(self)
 		self.stop = False
-		self.iqStream = iqStream
 		self.fileHandle = fileHandle
 
 	def run(self):
 
 		while not(self.stop):
-			gotData = False
-			try:
-				tempBuffer = self.iqStream.queue.get(block = True, timeout = 1)
-				gotData = True
-			except queue.Empty:
-				pass
-
-			if gotData:
+			while (iqStream.tail != iqStream.head):
+				tempBuffer = np.copy(iqStream.buffer[iqStream.tail])
+				newTail = iqStream.tail + 1
+				if (newTail >= iqStream.queueEntries):
+					newTail = 0
+				iqStream.tail = newTail
 				self.fileHandle.write(tempBuffer.tobytes())
-
-def extIoCallback(cnt, status, IQoffs, IQdata):
-	""" main function wrapper for the IQ Stream callback method """
-	global iqStream
-	iqStream.iqStreamCallback(cnt, status, IQoffs, IQdata)
+			time.sleep(0.05)
 
 """
 	Globals
 """
 
 hwTypesSupported = [ExtIO.ExtHWtype.USBdata16]
-iqStream = None
 extIO = None
 
 """
 	Main
 """
 
-if (len(sys.argv) == 5):
+if (len(sys.argv) == 6):
 	extIO = ExtIO(sys.argv[1])
-	frequency = int(sys.argv[2])
-	duration = float(sys.argv[3])	
-	filePath = sys.argv[4]
+	sampleRateIndex = int(sys.argv[2])
+	frequency = int(sys.argv[3])
+	duration = float(sys.argv[4])	
+	filePath = sys.argv[5]
 	fileName = filePath + os.path.sep + 'IQ_'
 	fileName += datetime.utcnow().strftime('%Y%m%d_%H%M%SZ')
 	fileName += '_' + str(frequency) + 'Hz.wav'
 
 else:
-	print('usage: python recordIQ.py <ExtIO DLL> <Frequency in Hertz> <Duration in Seconds> <Path for Record File>')
+	print('usage: python recordIQ.py <ExtIO DLL> <Sample Rate Index> <Frequency in Hertz> <Duration in Seconds> <Path for Record File>')
 	exit()
 
 # TODO: Support non-default sample rates
@@ -122,16 +117,16 @@ if extIO.hwtype not in hwTypesSupported:
 	print('[main] Unsupported Hardware Type') 
 	exit()
 
-iqStream = IqStream(extIO = extIO, typesSupported = hwTypesSupported)
+iqStream.init(_extIO = extIO, _typesSupported = hwTypesSupported, _queueEntries = 2048)
 
-extIO.SetCallback(extIoCallback)
+extIO.SetCallback(iqStream.iqStreamCallback)
 extIO.OpenHW()
 
 # Set the stream format and sample rate
 # note: some radios allow these to change while streaming
 # the handler would be notified
 iqStream.type = extIO.hwtype
-#extIO.ExtIoSetSrate(8) # testing
+extIO.ExtIoSetSrate(sampleRateIndex)
 iqStream.sampleRate = extIO.ExtIoGetSrates(extIO.ExtIoGetActualSrateIdx())
 
 # create a default header
@@ -140,11 +135,12 @@ fileHeader = waveHeader()
 wavFile = open(fileName, 'wb')
 wavFile.write(fileHeader.to_bytes())
 
-recorder = recorderThread(iqStream, wavFile)
+recorder = recorderThread(wavFile)
 recorder.start()
 
 extIO.StartHW(frequency)
-# open file
+
+iqStream.initBuffers()
 
 iqStream.enabled = True
 
@@ -163,6 +159,15 @@ extIO.CloseHW()
 
 # close file
 wavFile.close()
+
+print('Callback Hits = ' + str(iqStream.callbackHits))
+print('Callback Info = ' + str(iqStream.callbackInfo))
+print('Callback Data = ' + str(iqStream.callbackData))
+print('IQ Pairs per Callback = ' + str(extIO.iqPairs))
+print('Total IQ Pairs = ' + str(extIO.iqPairs * iqStream.callbackData))
+print('Samples for second = ' + str((extIO.iqPairs * iqStream.callbackData) / duration))
+print('Overruns = ' + str(iqStream.overruns))
+print('Delta Time Misses = ' + str(iqStream.callbackMisses))
 
 # update file header information
 	
@@ -200,5 +205,3 @@ fileHeader.fmtBytesPerSecond = int(iqStream.sampleRate) * fileHeader.fmtBitsPerS
 wavFile = open(fileName, 'rb+')
 wavFile.write(fileHeader.to_bytes())
 wavFile.close()
-
-print('Overruns = ' + str(iqStream.overruns))
